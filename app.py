@@ -7,6 +7,8 @@ import io
 import json
 import os
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +18,13 @@ from PIL import Image, ImageDraw, ImageFont
 APP_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = APP_DIR / "configs" / "roadguard_swin_infer.py"
 DEFAULT_CHECKPOINT = APP_DIR / "weights" / "best_coco_bbox_mAP_epoch_5.pth"
+DEFAULT_CHECKPOINT_URL = os.getenv(
+    "ROADGUARD_SWIN_CHECKPOINT_URL",
+    "https://github.com/vishal122006/roadguard-swin-transformer/releases/download/swin-epoch5/best_coco_bbox_mAP_epoch_5.pth",
+).strip()
+DEFAULT_CACHE_DIR = Path(
+    os.getenv("ROADGUARD_SWIN_CACHE_DIR", str(Path.home() / ".cache" / "roadguard_swin"))
+).expanduser()
 CLASS_NAMES = [
     "D00_Longitudinal_Crack",
     "D10_Transverse_Crack",
@@ -101,6 +110,73 @@ def resolve_config_checkpoint() -> tuple[Path, Path]:
     config = Path(config_value).expanduser() if config_value else DEFAULT_CONFIG
     checkpoint = Path(checkpoint_value).expanduser() if checkpoint_value else DEFAULT_CHECKPOINT
     return config.resolve(), checkpoint.resolve()
+
+
+def ensure_checkpoint_available(checkpoint_path: Path) -> Path:
+    """Use local weights when present; otherwise download the public release asset."""
+    minimum_bytes = 10 * 1024 * 1024
+    if checkpoint_path.is_file():
+        if checkpoint_path.stat().st_size >= minimum_bytes:
+            return checkpoint_path
+        raise ValueError(f"Checkpoint file is too small to be a valid trained model: {checkpoint_path}")
+
+    cache_path = DEFAULT_CACHE_DIR / "best_coco_bbox_mAP_epoch_5.pth"
+    if cache_path.is_file() and cache_path.stat().st_size >= minimum_bytes:
+        return cache_path
+
+    url = os.getenv("ROADGUARD_SWIN_CHECKPOINT_URL", DEFAULT_CHECKPOINT_URL).strip()
+    if not url:
+        raise FileNotFoundError("No local Swin checkpoint and no checkpoint download URL configured.")
+
+    DEFAULT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    partial_path = cache_path.with_suffix(cache_path.suffix + ".part")
+    progress = st.progress(0, text="Downloading the trained Swin checkpoint…")
+    downloaded = 0
+    expected_size = None
+    try:
+        request = urllib.request.Request(
+            url, headers={"User-Agent": "RoadGuard-Swin-Streamlit/1.0"}
+        )
+        with urllib.request.urlopen(request, timeout=60) as response:
+            content_length = response.headers.get("Content-Length")
+            expected_size = int(content_length) if content_length else None
+            with partial_path.open("wb") as handle:
+                while True:
+                    chunk = response.read(8 * 1024 * 1024)
+                    if not chunk:
+                        break
+                    handle.write(chunk)
+                    downloaded += len(chunk)
+                    if expected_size:
+                        progress.progress(
+                            min(1.0, downloaded / expected_size),
+                            text=f"Downloading trained checkpoint… {downloaded / 1024**2:.0f} MB",
+                        )
+        if expected_size is not None and downloaded != expected_size:
+            raise IOError(f"Checkpoint download incomplete: {downloaded} of {expected_size} bytes.")
+        if downloaded < minimum_bytes:
+            raise IOError(
+                "The downloaded file was too small to be model weights. "
+                "The release asset may not have been uploaded yet."
+            )
+        os.replace(partial_path, cache_path)
+        progress.progress(1.0, text="Checkpoint downloaded.")
+        progress.empty()
+        return cache_path
+    except urllib.error.HTTPError as exc:
+        partial_path.unlink(missing_ok=True)
+        progress.empty()
+        if exc.code == 404:
+            raise FileNotFoundError(
+                "The epoch-5 checkpoint release asset is not published yet. "
+                "Run scripts/publish_checkpoint_release_colab.py from Google Colab "
+                "to upload the saved checkpoint to the public release."
+            ) from exc
+        raise RuntimeError(f"Checkpoint download failed with HTTP {exc.code}.") from exc
+    except Exception:
+        partial_path.unlink(missing_ok=True)
+        progress.empty()
+        raise
 
 
 @st.cache_resource(show_spinner=False)
@@ -280,7 +356,10 @@ st.divider()
 
 st.markdown('<div class="rg-section">03 / Detection controls</div>', unsafe_allow_html=True)
 config_path, checkpoint_path = resolve_config_checkpoint()
-st.caption(f"Configuration: {config_path.name} · Checkpoint: {checkpoint_path.name}")
+st.caption(
+    f"Configuration: {config_path.name} · Checkpoint: {checkpoint_path.name} · "
+    + ("local weights available" if checkpoint_path.is_file() else "auto-downloads from the public release on first detection")
+)
 threshold = st.slider("Detection confidence threshold", 0.05, 0.95, 0.50, 0.05)
 uploaded = st.file_uploader("Upload a road image", type=["jpg", "jpeg", "png", "webp"])
 submitted = False
@@ -305,11 +384,11 @@ if uploaded is not None and image is not None:
     if submitted:
         if not config_path.is_file():
             st.error(f"Model configuration is missing: {config_path}. Keep the repository config in place or set ROADGUARD_SWIN_CONFIG.")
-        elif not checkpoint_path.is_file():
-            st.error(f"Trained checkpoint not found: {checkpoint_path}. Place the 5-epoch checkpoint at weights/best_coco_bbox_mAP_epoch_5.pth or set ROADGUARD_SWIN_CHECKPOINT. Large model weights are intentionally not stored in GitHub.")
         else:
             try:
-                with st.spinner("Loading Swin model and detecting road damage..."):
+                with st.spinner("Preparing trained Swin checkpoint…"):
+                    checkpoint_path = ensure_checkpoint_available(checkpoint_path)
+                with st.spinner("Loading Swin model and detecting road damage…"):
                     start = time.perf_counter()
                     model, device = load_model(str(config_path), str(checkpoint_path))
                     detections = infer(model, image, threshold)
