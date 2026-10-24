@@ -1,0 +1,109 @@
+{
+  "generated_utc": "2026-10-24",
+  "model": "Swin Transformer Tiny + FPN + Faster R-CNN",
+  "dataset": "RDD2022",
+  "selected_checkpoint": "best_coco_bbox_mAP_epoch_5.pth",
+  "epochs_completed": 5,
+  "threshold_selection_method": "Maximum overall micro-F1 on validation among thresholds 0.20, 0.30, 0.40, 0.50; ties would favor precision",
+  "selected_confidence_threshold": 0.5,
+  "matching_iou_threshold": 0.5,
+  "validation_threshold_sweep": [
+    {
+      "threshold": 0.2,
+      "TP": 686,
+      "FP": 4702,
+      "FN": 381,
+      "precision": 0.1273199703043801,
+      "recall": 0.6429240862230553,
+      "f1": 0.21254841208365607
+    },
+    {
+      "threshold": 0.3,
+      "TP": 610,
+      "FP": 2646,
+      "FN": 457,
+      "precision": 0.18734643734643736,
+      "recall": 0.5716963448922212,
+      "f1": 0.2822114272495952
+    },
+    {
+      "threshold": 0.4,
+      "TP": 530,
+      "FP": 1587,
+      "FN": 537,
+      "precision": 0.25035427491733586,
+      "recall": 0.4967197750702905,
+      "f1": 0.3329145728643216
+    },
+    {
+      "threshold": 0.5,
+      "TP": 454,
+      "FP": 983,
+      "FN": 613,
+      "precision": 0.3159359777313848,
+      "recall": 0.42549203373945643,
+      "f1": 0.3626198083067092
+    }
+  ],
+  "validation_coco_metrics_epoch_5": {
+    "mAP@0.50:0.95": 0.09,
+    "mAP@0.50": 0.247,
+    "mAP@0.75": 0.04
+  },
+  "test_set": {
+    "images": 1156,
+    "TP": 426,
+    "FP": 949,
+    "FN": 571,
+    "precision": 0.3098181818181818,
+    "recall": 0.4272818455366098,
+    "f1": 0.3591905564924115
+  },
+  "per_class_test": [
+    {
+      "class": "D00_Longitudinal_Crack",
+      "TP": 40,
+      "FP": 88,
+      "FN": 192,
+      "precision": 0.3125,
+      "recall": 0.1724137931034483,
+      "f1": 0.22222222222222224
+    },
+    {
+      "class": "D10_Transverse_Crack",
+      "TP": 0,
+      "FP": 0,
+      "FN": 13,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0
+    },
+    {
+      "class": "D20_Alligator_Crack",
+      "TP": 169,
+      "FP": 268,
+      "FN": 110,
+      "precision": 0.38672768878718533,
+      "recall": 0.6057347670250897,
+      "f1": 0.4720670391061453
+    },
+    {
+      "class": "D40_Pothole",
+      "TP": 217,
+      "FP": 593,
+      "FN": 256,
+      "precision": 0.2679012345679012,
+      "recall": 0.4587737843551797,
+      "f1": 0.33826968043647704
+    }
+  ],
+  "notes": [
+    "Five training epochs completed.",
+    "Validation threshold sweep tested 0.20, 0.30, 0.40, and 0.50. Threshold 0.50 produced the highest micro-F1 among tested thresholds.",
+    "Precision/recall/F1 use greedy one-to-one matching per image and class at IoU 0.50; they are not COCO mAP.",
+    "The test split was previously inspected in an exploratory epoch-1 evaluation at confidence 0.30. The test results should not be described as coming from a wholly untouched test set.",
+    "No detections were matched for transverse cracks at the selected threshold.",
+    "These results are a preliminary research baseline, not deployment-ready performance.",
+    "Model checkpoint weights and dataset images are not included in the repository."
+  ]
+}
