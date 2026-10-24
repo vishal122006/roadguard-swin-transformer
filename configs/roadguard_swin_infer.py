@@ -153,3 +153,24 @@ test_pipeline = [
     dict(type="Resize", scale=(1333, 800), keep_ratio=True),
     dict(type="PackDetInputs"),
 ]
+
+
+# MMDetection's init_detector requires test_dataloader.dataset.pipeline
+# even for single-image inference. This minimal dataset config supplies that
+# pipeline without loading the dataset into a dataloader during inference.
+test_dataloader = dict(
+    batch_size=1,
+    num_workers=0,
+    persistent_workers=False,
+    drop_last=False,
+    sampler=dict(type="DefaultSampler", shuffle=False),
+    dataset=dict(
+        type="CocoDataset",
+        data_root="data/rdd2022/",
+        ann_file="annotations/instances_val.json",
+        data_prefix=dict(img="images/"),
+        metainfo=metainfo,
+        pipeline=test_pipeline,
+        test_mode=True,
+    ),
+)
