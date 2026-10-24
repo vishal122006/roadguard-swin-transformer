@@ -83,3 +83,8 @@ The previous YOLO app remains in the separate repository [roadguard-ai](https://
 ## Automatic checkpoint loading
 
 If the epoch-5 checkpoint is absent from `weights/`, the app downloads it from the public `swin-epoch5` release asset on first detection. To publish that asset from Colab, see [checkpoint setup](docs/checkpoint-setup.md). Publishing the release makes the trained weights public; the uploader requires an explicit `PUBLISH` confirmation. The old YOLO repository is not modified.
+
+
+## Test and launch in the existing Colab environment
+
+A Colab smoke-test script runs the real Swin checkpoint on an annotated RDD2022 validation image and saves an annotated preview to Google Drive. See [the Colab test and launch instructions](docs/colab-smoke-test.md). The test image is selected from the validation split and is for a visual check, not a new accuracy metric.
