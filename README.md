@@ -78,3 +78,8 @@ See [the full experiment report](docs/experiment-report.md) and the JSON/CSV fil
 - \`weights/\`: local-only trained checkpoint folder, ignored by Git.
 
 The previous YOLO app remains in the separate repository [roadguard-ai](https://github.com/vishal122006/roadguard-ai). This repo uses the Swin model directly and does not copy the YOLO inference/fallback logic.
+
+
+## Automatic checkpoint loading
+
+If the epoch-5 checkpoint is absent from `weights/`, the app downloads it from the public `swin-epoch5` release asset on first detection. To publish that asset from Colab, see [checkpoint setup](docs/checkpoint-setup.md). Publishing the release makes the trained weights public; the uploader requires an explicit `PUBLISH` confirmation. The old YOLO repository is not modified.
