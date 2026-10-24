@@ -1,0 +1,21 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.env
+.streamlit/secrets.toml
+
+# Do not commit RDD2022 images/annotations or large detector checkpoints.
+data/
+dataset/
+weights/
+*.pth
+*.pt
+*.onnx
+*.engine
+*.zip
+work_dirs/
+runs/
+outputs/
+.ipynb_checkpoints/
+.DS_Store
