@@ -26,6 +26,12 @@ Image-level accuracy answers “did this image contain any crack?”; object-lev
 
 The original annotations are only read; converted annotations are saved to a new directory.
 
+To have the Streamlit scorecard show this measured baseline, copy the JSON report to the deployment repository path results/crack_only_validation.json after evaluation. Keep it as the **four-class checkpoint's** baseline report; do not put results from a different checkpoint under that filename until the app is actually updated to use that checkpoint.
+
+    cp /content/drive/MyDrive/RoadGuard/crack_baseline_validation.json /content/roadguard-swin-transformer/results/crack_only_validation.json
+
+Then commit/push that JSON file from an authenticated Git environment to update the app's scorecard.
+
     python scripts/prepare_crack_dataset.py \
       --train-ann /content/RoadGuard_SwinTransformer/data/rdd2022/annotations/instances_train.json \
       --val-ann /content/RoadGuard_SwinTransformer/data/rdd2022/annotations/instances_val.json \
