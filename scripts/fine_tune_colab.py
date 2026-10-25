@@ -27,6 +27,7 @@ def parse_args():
                    help="ClassBalancedDataset oversampling threshold; set 0 to disable")
     p.add_argument("--no-photometric-augmentation", action="store_true",
                    help="Disable PhotoMetricDistortion if it is unsuitable for the dataset")
+    p.add_argument("--resume", action="store_true", help="Resume this same fine-tuning run from work-dir/latest.pth")
     return p.parse_args()
 
 
@@ -137,10 +138,14 @@ def main():
         raise ValueError("For a meaningful run, epochs must be >= 5; val-interval and lr must be positive.")
     if args.oversample_thr < 0:
         raise ValueError("--oversample-thr cannot be negative.")
-    if work_dir.exists() and any(work_dir.iterdir()):
+    latest_checkpoint = work_dir / "latest.pth"
+    if args.resume:
+        if not latest_checkpoint.is_file():
+            raise FileNotFoundError(f"Cannot resume: latest checkpoint missing: {latest_checkpoint}")
+    elif work_dir.exists() and any(work_dir.iterdir()):
         raise FileExistsError(
             f"Output directory is not empty: {work_dir}. Choose a NEW work-dir "
-            "to avoid overwriting earlier experiments."
+            "for a new experiment, or pass --resume to continue this exact run."
         )
 
     os.environ.setdefault("MPLBACKEND", "Agg")
@@ -150,9 +155,14 @@ def main():
 
     register_all_modules(init_default_scope=True)
     cfg = Config.fromfile(str(config_path))
-    cfg.load_from = str(checkpoint_path)
-    cfg.resume = False
     cfg.work_dir = str(work_dir)
+    if args.resume:
+        cfg.resume = True
+        cfg.load_from = None
+        print(f"Resuming existing fine-tuning run from: {latest_checkpoint}")
+    else:
+        cfg.load_from = str(checkpoint_path)
+        cfg.resume = False
 
     # Print the current dataset statistics before making any training changes.
     audit_counts(config_path.parent.parent / "data/rdd2022/annotations/instances_train.json")
@@ -178,6 +188,7 @@ def main():
     print(f"Learning rate:       {args.lr:g}")
     print("Selection metric:    validation COCO bbox mAP")
     print("Original checkpoint: unchanged")
+    print("Resume mode:         " + str(args.resume))
     print("Test split:          not used for checkpoint selection")
     print("=" * 76)
 
