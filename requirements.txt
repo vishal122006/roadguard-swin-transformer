@@ -1,7 +1,6 @@
-# Streamlit Community Cloud deployment target: Python 3.11.
-# PyTorch/MMCV wheels below are built for the Python 3.11 / CPU environment.
+# Target runtime: Python 3.11 (select this in Streamlit Cloud Advanced settings).
+# Streamlit Community Cloud uses CPU-only inference; the model is not loaded until a user clicks Run.
 streamlit==1.61.1
-starlette>=1.4.1,<2
 numpy>=1.24,<2
 Pillow>=10.0
 
