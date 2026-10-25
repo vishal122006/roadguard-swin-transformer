@@ -52,4 +52,17 @@ The class head is initialized by averaging the D00/D10/D20 classifier and box-re
 
 Run crack-only evaluation on the baseline and then on the best new checkpoint, using the same validation split and thresholds. The fine-tuned model uses the class order Crack, Pothole, so use a two-class inference config derived from the training config with the same backbone, FPN, and test pipeline. Do not pass the four-class inference config to a two-class checkpoint.
 
+After the fine-tuning completes, evaluate the best checkpoint using the matching two-class inference config and converted validation annotations:
+
+    python scripts/evaluate_crack_only.py \
+      --config configs/roadguard_swin_crack_infer.py \
+      --checkpoint /content/drive/MyDrive/RoadGuard/work_dirs/roadguard_swin_crack_binary_20ep/best_coco_bbox_mAP_epoch_XX.pth \
+      --model-class-mode binary \
+      --ann /content/drive/MyDrive/RoadGuard/crack_binary_annotations/instances_val_crack_binary.json \
+      --images-dir /content/RoadGuard_SwinTransformer/data/rdd2022/images \
+      --device cuda:0 \
+      --out /content/drive/MyDrive/RoadGuard/crack_binary_validation.json
+
+Replace the checkpoint filename with the actual best checkpoint saved by training. Compare the crack-level AP, precision, recall and F1 with the baseline evaluation, using the same validation images and IoU threshold.
+
 Keep the current public app/checkpoint unchanged until the new model passes a real inference smoke test and its validation results are better. Use validation to choose the threshold, then freeze it before evaluating test data. The project’s existing test split was inspected previously, so disclose that limitation and use a genuinely new holdout if you need a stronger final research claim.
