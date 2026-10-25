@@ -133,6 +133,9 @@ def main():
     cfg = Config.fromfile(str(config_path))
     cfg.work_dir = str(work_dir)
     cfg.model.roi_head.bbox_head.num_classes = 2
+    # The full detector checkpoint is the initialization source; avoid unnecessary external backbone downloads.
+    if cfg.get("model") and cfg.model.get("backbone"):
+        cfg.model.backbone.init_cfg = None
     cfg.metainfo = dict(classes=("Crack","Pothole"))
     patch_dataset(cfg.train_dataloader.dataset,train_ann,data_root)
     if not args.no_photometric_augmentation:
