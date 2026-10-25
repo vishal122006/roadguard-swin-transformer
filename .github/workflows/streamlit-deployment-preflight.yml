@@ -11,6 +11,10 @@ on:
       - "scripts/deployment_preflight_*.py"
       - "scripts/fine_tune_colab.py"
       - "scripts/score_prf1_sweep.py"
+      - "scripts/evaluate_crack_only.py"
+      - "scripts/prepare_crack_dataset.py"
+      - "scripts/fine_tune_crack_colab.py"
+      - "configs/roadguard_swin_crack_infer.py"
       - ".github/workflows/streamlit-deployment-preflight.yml"
   workflow_dispatch:
 
@@ -49,7 +53,7 @@ jobs:
       - name: Compile app and inference files
         run: |
           .venv/bin/python -m py_compile app.py configs/roadguard_swin_infer.py
-          .venv/bin/python -m py_compile scripts/deployment_preflight_imports.py scripts/deployment_preflight_inference.py scripts/fine_tune_colab.py scripts/score_prf1_sweep.py
+          .venv/bin/python -m py_compile scripts/deployment_preflight_imports.py scripts/deployment_preflight_inference.py scripts/fine_tune_colab.py scripts/score_prf1_sweep.py scripts/evaluate_crack_only.py scripts/prepare_crack_dataset.py scripts/fine_tune_crack_colab.py configs/roadguard_swin_crack_infer.py
 
       - name: Download public checkpoint and smoke-test real model inference
         env:
