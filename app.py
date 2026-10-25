@@ -291,20 +291,51 @@ def csv_bytes(rows: list[dict]) -> bytes:
 
 
 def render_report(report: dict):
-    st.markdown('<div class="rg-section">02 / Recorded experiment scorecard</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="rg-section">02 / Current model accuracy & performance</div>',
+        unsafe_allow_html=True,
+    )
     test = report.get("test_set", {})
     coco = report.get("validation_coco_metrics_epoch_5", {})
-    metrics = st.columns(5, gap="small")
+    primary, explanation = st.columns([1, 2], gap="medium")
+    with primary:
+        primary.metric(
+            "Detection accuracy proxy · Validation COCO mAP@0.50:0.95",
+            percent(coco.get("mAP@0.50:0.95")),
+            help=(
+                "For object detection, COCO mean Average Precision (mAP) is a "
+                "standard overall metric. There is no single universally "
+                "meaningful plain accuracy percentage for this task."
+            ),
+        )
+    with explanation:
+        st.markdown("**Current baseline: Swin-Tiny + FPN + Faster R-CNN, epoch 5**")
+        st.write(
+            "The latest measured validation COCO mAP@0.50:0.95 is "
+            f"**{percent(coco.get('mAP@0.50:0.95'))}**. This is the existing "
+            "baseline checkpoint; a fine-tuned model has not yet been evaluated "
+            "and no improvement is being claimed."
+        )
+        st.caption(
+            "These are dataset-level results—not confidence or accuracy for "
+            "the individual photo you upload."
+        )
+
+    metrics = st.columns(4, gap="small")
     cards = [
-        ("Validation mAP 0.50:0.95", percent(coco.get("mAP@0.50:0.95"))),
-        ("Validation mAP 0.50", percent(coco.get("mAP@0.50"))),
-        ("Test precision", percent(test.get("precision"))),
-        ("Test recall", percent(test.get("recall"))),
-        ("Test F1", percent(test.get("f1"))),
+        ("Validation mAP@0.50", percent(coco.get("mAP@0.50"))),
+        ("Test precision*", percent(test.get("precision"))),
+        ("Test recall*", percent(test.get("recall"))),
+        ("Test F1*", percent(test.get("f1"))),
     ]
     for col, (label, value) in zip(metrics, cards):
         col.metric(label, value)
-    st.caption("Recorded results from the five-epoch checkpoint. These are dataset-level metrics, not a score for the currently uploaded image.")
+    st.caption(
+        "*Previously recorded results for the epoch-5 baseline. The test split "
+        "was inspected earlier during development, so these are not results from "
+        "a completely untouched test set. Precision/recall/F1 use greedy "
+        "one-to-one matching per class at IoU 0.50."
+    )
     with st.expander("View per-class test performance and validation threshold sweep"):
         per_class = report.get("per_class_test", [])
         if per_class:
