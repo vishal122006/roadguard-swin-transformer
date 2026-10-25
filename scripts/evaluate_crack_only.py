@@ -10,8 +10,9 @@ import argparse, csv, json
 from collections import defaultdict
 from pathlib import Path
 
-MODEL_CLASSES = ("D00_Longitudinal_Crack", "D10_Transverse_Crack",
-                 "D20_Alligator_Crack", "D40_Pothole")
+FOUR_CLASS_MODEL_CLASSES = ("D00_Longitudinal_Crack", "D10_Transverse_Crack",
+                             "D20_Alligator_Crack", "D40_Pothole")
+BINARY_MODEL_CLASSES = ("Crack", "Pothole")
 CRACK_CODES = {"D00", "D10", "D20"}
 
 def code_from_name(name: str) -> str:
@@ -26,7 +27,10 @@ def code_from_name(name: str) -> str:
     raise ValueError(f"Unrecognized RDD2022 category: {name!r}")
 
 def as_target(name: str) -> str:
-    return "Crack" if code_from_name(name) in CRACK_CODES else "Pothole"
+    upper = name.upper()
+    if "CRACK" in upper or code_from_name(name) in CRACK_CODES:
+        return "Crack"
+    return "Pothole"
 
 def to_xyxy(box):
     x, y, w, h = map(float, box)
@@ -131,6 +135,8 @@ def main():
                    default=[0.10,0.20,0.30,0.40,0.50,0.60,0.70,0.80])
     p.add_argument("--iou-thr", type=float, default=0.50)
     p.add_argument("--min-score", type=float, default=0.001)
+    p.add_argument("--model-class-mode", choices=("four-class", "binary"), default="four-class",
+                   help="four-class for the original checkpoint; binary for Crack/Pothole fine-tuning")
     p.add_argument("--device", default="cuda:0")
     p.add_argument("--out", default="results/crack_only_validation.json")
     args = p.parse_args()
@@ -157,7 +163,8 @@ def main():
         pass
     register_all_modules(init_default_scope=True)
     model = init_detector(cfg, args.checkpoint, device=args.device)
-    model.dataset_meta["classes"] = MODEL_CLASSES
+    model_classes = FOUR_CLASS_MODEL_CLASSES if args.model_class_mode == "four-class" else BINARY_MODEL_CLASSES
+    model.dataset_meta["classes"] = model_classes
     images_dir = Path(args.images_dir)
     predictions, missing = {}, []
     for pos, image_id in enumerate(image_ids, 1):
@@ -175,10 +182,10 @@ def main():
         dets = []
         for box, score, label in zip(boxes, scores, labels):
             score, label = float(score), int(label)
-            if score < args.min_score or not 0 <= label < len(MODEL_CLASSES):
+            if score < args.min_score or not 0 <= label < len(model_classes):
                 continue
-            dets.append({"class":"Pothole" if label == 3 else "Crack",
-                         "subtype":MODEL_CLASSES[label], "score":score,
+            target = ("Pothole" if label == 3 else "Crack") if args.model_class_mode == "four-class" else model_classes[label]
+            dets.append({"class":target, "subtype":model_classes[label], "score":score,
                          "bbox":[float(v) for v in box.tolist()]})
         predictions[image_id] = dets
         if pos % 100 == 0 or pos == len(image_ids):
@@ -197,6 +204,7 @@ def main():
     best = max(rows, key=lambda r:(r["crack_object_level"]["f1"],r["crack_object_level"]["recall"]))
     report = {
         "task":"unified crack detection (D00/D10/D20 merged); pothole separate",
+        "model_class_mode":args.model_class_mode,
         "checkpoint":str(Path(args.checkpoint).resolve()),
         "annotation_file":str(Path(args.ann).resolve()),
         "images_in_annotations":len(image_ids),
