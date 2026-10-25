@@ -97,6 +97,14 @@ def load_report() -> dict:
         return {}
 
 
+def load_crack_eval_report() -> dict:
+    path = APP_DIR / "results" / "crack_only_validation.json"
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
 def percent(value) -> str:
     try:
         return f"{float(value) * 100:.2f}%"
@@ -337,41 +345,40 @@ def render_report(report: dict):
         "one-to-one matching per class at IoU 0.50."
     )
 
-    # Aggregate the three crack classes separately from potholes using the
-    # recorded object-level TP/FP/FN counts; do not call this plain accuracy.
-    crack_class_codes = {
-        "D00_Longitudinal_Crack",
-        "D10_Transverse_Crack",
-        "D20_Alligator_Crack",
-    }
-    crack_rows = [
-        row for row in report.get("per_class_test", [])
-        if row.get("class") in crack_class_codes
-    ]
-    if crack_rows:
-        crack_tp = sum(int(row.get("TP", 0)) for row in crack_rows)
-        crack_fp = sum(int(row.get("FP", 0)) for row in crack_rows)
-        crack_fn = sum(int(row.get("FN", 0)) for row in crack_rows)
-        crack_precision = crack_tp / (crack_tp + crack_fp) if crack_tp + crack_fp else 0.0
-        crack_recall = crack_tp / (crack_tp + crack_fn) if crack_tp + crack_fn else 0.0
-        crack_f1 = (
-            2 * crack_precision * crack_recall / (crack_precision + crack_recall)
-            if crack_precision + crack_recall else 0.0
+    st.markdown("**Unified crack-only evaluation**")
+    crack_report = load_crack_eval_report()
+    if crack_report and crack_report.get("threshold_sweep"):
+        threshold = crack_report.get("best_crack_f1_threshold_among_tested_thresholds")
+        selected = min(
+            crack_report["threshold_sweep"],
+            key=lambda row: abs(float(row.get("threshold", 0)) - float(threshold)),
         )
-        st.markdown("**Crack-only detection performance**")
+        crack_metrics = selected.get("crack_object_level", {})
+        image_metrics = selected.get("crack_image_level", {})
+        ap = crack_report.get("ap_at_iou_threshold", {}).get("Crack")
+        cols = st.columns(5, gap="small")
+        cols[0].metric("Crack AP@0.50", percent(ap))
+        cols[1].metric("Crack precision", percent(crack_metrics.get("precision")))
+        cols[2].metric("Crack recall", percent(crack_metrics.get("recall")))
+        cols[3].metric("Crack F1", percent(crack_metrics.get("f1")))
+        cols[4].metric("Image-level crack accuracy", percent(image_metrics.get("accuracy")))
         st.caption(
-            "Aggregates longitudinal, transverse, and alligator cracks (excludes "
-            "potholes). Recorded test split; confidence threshold 0.50; matching IoU 0.50."
+            f"Validation split · confidence threshold {float(threshold):.2f} · "
+            f"IoU {float(crack_report.get('iou_threshold', 0.5)):.2f}. "
+            "AP is 101-point interpolated AP at IoU 0.50, not COCO mAP@[.50:.95]."
         )
-        crack_metrics = st.columns(4, gap="small")
-        crack_metrics[0].metric("Crack precision", percent(crack_precision))
-        crack_metrics[1].metric("Crack recall", percent(crack_recall))
-        crack_metrics[2].metric("Crack F1", percent(crack_f1))
-        crack_metrics[3].metric("Correctly matched cracks (TP)", f"{crack_tp}")
         st.caption(
-            f"Counts behind these figures: TP {crack_tp}, FP {crack_fp}, FN {crack_fn}. "
-            "These are object-detection metrics, not plain classification accuracy. "
-            "The test split was inspected earlier during development."
+            "Object-level metrics evaluate whether crack boxes match annotated cracks. "
+            "Image-level accuracy only checks whether an image contains any crack. "
+            "The file is produced by scripts/evaluate_crack_only.py."
+        )
+    else:
+        st.info(
+            "A unified crack-only score has not been measured yet. Run "
+            "scripts/evaluate_crack_only.py on the RDD2022 validation split, then "
+            "save its JSON output as results/crack_only_validation.json to display "
+            "the measured crack-specific scores here. The values above still describe "
+            "the four-class baseline."
         )
 
     with st.expander("View per-class test performance and validation threshold sweep"):
