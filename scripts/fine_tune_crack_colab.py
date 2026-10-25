@@ -36,6 +36,11 @@ def walk_dicts(node):
                 yield from walk_dicts(value)
 
 def patch_dataset(dataset_cfg, annotation_file, data_root):
+    # Our generated COCO file_name values already include images/<split>/..., so
+    # use an empty img prefix to avoid images/images/... path duplication.
+    ann_data = json.loads(Path(annotation_file).read_text(encoding="utf-8"))
+    first_name = next((str(row.get("file_name", "")) for row in ann_data.get("images", [])), "")
+    img_prefix = "" if first_name.startswith("images/") else "images/"
     leaves = 0
     for node in walk_dicts(dataset_cfg):
         typ = str(node.get("type",""))
@@ -43,7 +48,7 @@ def patch_dataset(dataset_cfg, annotation_file, data_root):
             node["ann_file"] = str(annotation_file)
             node["data_root"] = str(data_root) + os.sep
             prefix = dict(node.get("data_prefix",{}))
-            prefix["img"] = "images/"
+            prefix["img"] = img_prefix
             node["data_prefix"] = prefix
             node["metainfo"] = dict(classes=("Crack","Pothole"))
             leaves += 1
@@ -108,9 +113,14 @@ def main():
     data_root = Path(args.data_root).expanduser().resolve()
     ann_dir = Path(args.annotation_dir).expanduser().resolve()
     work_dir = Path(args.work_dir).expanduser().resolve()
-    train_ann = ann_dir / "instances_train_crack_binary.json"
-    val_ann = ann_dir / "instances_val_crack_binary.json"
-    test_ann = ann_dir / "instances_test_crack_binary.json"
+    # Accept the filenames produced by the Colab COCO preparation cell and the
+    # repository conversion script, without requiring the user to rename files.
+    def annotation_path(split):
+        candidates = [ann_dir / f"instances_{split}_crack_binary.json", ann_dir / f"instances_{split}.json"]
+        return next((p for p in candidates if p.is_file()), candidates[0])
+    train_ann = annotation_path("train")
+    val_ann = annotation_path("val")
+    test_ann = annotation_path("test")
     for path in (config_path,source_checkpoint,train_ann,val_ann):
         if not path.is_file():
             raise FileNotFoundError(path)
