@@ -140,6 +140,8 @@ def main():
         raise ValueError("--oversample-thr cannot be negative.")
     latest_checkpoint = work_dir / "latest.pth"
     if args.resume:
+        if (work_dir / ".training_complete").is_file():
+            raise RuntimeError(f"This run is already marked complete: {work_dir}. Choose a new work-dir for a new experiment.")
         if not latest_checkpoint.is_file():
             raise FileNotFoundError(f"Cannot resume: latest checkpoint missing: {latest_checkpoint}")
     elif work_dir.exists() and any(work_dir.iterdir()):
@@ -204,6 +206,9 @@ def main():
     best = max(candidates, key=lambda p: p.stat().st_mtime)
     print(f"Best validation-selected checkpoint: {best}")
     print(f"Checkpoint size: {best.stat().st_size / 1024**2:.1f} MB")
+    (work_dir / ".training_complete").write_text(
+        f"completed; best_checkpoint={best.name}\\n", encoding="utf-8"
+    )
     print(f"Training run finished. All artifacts: {work_dir}")
 
 
