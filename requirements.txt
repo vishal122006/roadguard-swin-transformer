@@ -1,9 +1,10 @@
-streamlit>=1.41,<2
+# Streamlit Community Cloud deployment target: Python 3.11.
+# PyTorch/MMCV wheels below are built for the Python 3.11 / CPU environment.
+streamlit==1.61.1
+starlette>=1.4.1,<2
 numpy>=1.24,<2
 Pillow>=10.0
 
-# Streamlit Community Cloud is CPU-only. Use matching CPU PyTorch wheels
-# and the OpenMMLab CPU wheel index to avoid compiling MMCV from source.
 --extra-index-url https://download.pytorch.org/whl/cpu
 --find-links https://download.openmmlab.com/mmcv/dist/cpu/torch2.1/index.html
 torch==2.1.0+cpu
