@@ -1,27 +1,126 @@
 #!/usr/bin/env python3
-"""Fine-tune the existing RoadGuard MMDetection checkpoint in Colab.
+"""Validation-driven accuracy fine-tuning for RoadGuard Swin in Colab.
 
-This script starts a NEW fine-tuning run from the trained epoch-5 weights.
-It does not resume the old optimizer/scheduler state and does not modify the
-original checkpoint. Validation mAP is used to select the best new checkpoint.
+Starts from an existing detector checkpoint, preserves the original weights,
+uses class-balanced sampling plus label-safe photometric augmentation, and
+selects the best checkpoint using validation COCO bbox mAP. It never selects
+a checkpoint using test-set metrics.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--config", required=True, help="Original MMDetection training config")
+    p.add_argument("--config", required=True, help="MMDetection training config")
     p.add_argument("--checkpoint", required=True, help="Existing trained .pth checkpoint")
-    p.add_argument("--work-dir", required=True, help="NEW output directory; use Google Drive")
-    p.add_argument("--epochs", type=int, default=15, help="Fine-tuning epochs (default: 15)")
-    p.add_argument("--lr", type=float, default=2e-5, help="Fine-tuning learning rate (default: 2e-5)")
+    p.add_argument("--work-dir", required=True, help="NEW output directory on Google Drive")
+    p.add_argument("--epochs", type=int, default=24, help="Fine-tuning epochs (default: 24)")
+    p.add_argument("--lr", type=float, default=2e-5, help="Fine-tuning learning rate")
     p.add_argument("--val-interval", type=int, default=1, help="Validate every N epochs")
-    p.add_argument("--max-keep-ckpts", type=int, default=3, help="Keep this many recent checkpoints")
+    p.add_argument("--max-keep-ckpts", type=int, default=3)
+    p.add_argument("--oversample-thr", type=float, default=0.03,
+                   help="ClassBalancedDataset oversampling threshold; set 0 to disable")
+    p.add_argument("--no-photometric-augmentation", action="store_true",
+                   help="Disable PhotoMetricDistortion if it is unsuitable for the dataset")
     return p.parse_args()
+
+
+def _as_dict(config):
+    return dict(config)
+
+
+def audit_counts(annotation_file: Path):
+    if not annotation_file.is_file():
+        print(f"Dataset audit skipped; annotation file not found: {annotation_file}")
+        return
+    try:
+        data = json.loads(annotation_file.read_text(encoding="utf-8"))
+        categories = {c["id"]: c["name"] for c in data.get("categories", [])}
+        counts = {name: 0 for name in categories.values()}
+        ignored = 0
+        for ann in data.get("annotations", []):
+            if ann.get("iscrowd", 0):
+                ignored += 1
+            else:
+                name = categories.get(ann.get("category_id"))
+                if name is not None:
+                    counts[name] += 1
+        print(f"Training annotation audit ({annotation_file}):")
+        print(f"  images={len(data.get('images', []))}, known_boxes={sum(counts.values())}, ignored_regions={ignored}")
+        for name, count in counts.items():
+            print(f"  {name}: {count}")
+        rare = [name for name, count in counts.items() if count < 100]
+        if rare:
+            print("WARNING: very low training support for:", ", ".join(rare))
+            print("Class balancing helps sampling but cannot replace missing/verified annotations.")
+    except Exception as exc:
+        print(f"WARNING: could not audit annotations: {type(exc).__name__}: {exc}")
+
+
+def _apply_accuracy_recipe(cfg, args):
+    # Disable external ImageNet initialization because the requested detector
+    # checkpoint supplies the starting weights for the full network.
+    if "model" in cfg and "backbone" in cfg.model:
+        cfg.model.backbone.init_cfg = None
+
+    dataset_cfg = cfg.train_dataloader.dataset
+    if "pipeline" not in dataset_cfg:
+        raise KeyError("Expected train_dataloader.dataset.pipeline in the supplied config.")
+
+    pipeline = [dict(step) for step in dataset_cfg.pipeline]
+    types = [step.get("type") for step in pipeline]
+    if not args.no_photometric_augmentation and "PhotoMetricDistortion" not in types:
+        load_ann_idx = next(
+            (i for i, step in enumerate(pipeline) if step.get("type") == "LoadAnnotations"),
+            None,
+        )
+        if load_ann_idx is None:
+            raise RuntimeError("Cannot add PhotoMetricDistortion: LoadAnnotations was not found.")
+        pipeline.insert(load_ann_idx + 1, dict(type="PhotoMetricDistortion"))
+        print("Accuracy recipe: enabled PhotoMetricDistortion (bbox-safe color/brightness changes).")
+    dataset_cfg.pipeline = pipeline
+
+    if args.oversample_thr > 0:
+        if dataset_cfg.get("type") == "ClassBalancedDataset":
+            print("Dataset is already class-balanced; leaving its wrapper unchanged.")
+        else:
+            base_dataset = _as_dict(dataset_cfg)
+            cfg.train_dataloader.dataset = dict(
+                type="ClassBalancedDataset",
+                oversample_thr=float(args.oversample_thr),
+                dataset=base_dataset,
+            )
+            print(f"Accuracy recipe: ClassBalancedDataset oversample_thr={args.oversample_thr:g}.")
+    else:
+        print("Class-balanced sampling disabled by request.")
+
+    # Keep the model's original warm-up, but schedule the two LR drops relative
+    # to this fine-tuning run. This avoids the old bug where 15 epochs ended
+    # before the original epoch-16/22 milestones ever ran.
+    schedulers = list(cfg.get("param_scheduler", []))
+    for scheduler in schedulers:
+        if scheduler.get("type") == "MultiStepLR" and scheduler.get("by_epoch", False):
+            first = max(1, int(round(args.epochs * 0.67)))
+            second = max(first + 1, int(round(args.epochs * 0.87)))
+            milestones = sorted(set(m for m in (first, second) if m < args.epochs))
+            scheduler.begin = 0
+            scheduler.end = args.epochs
+            scheduler.milestones = milestones
+            scheduler.gamma = float(scheduler.get("gamma", 0.1))
+            print(f"Accuracy recipe: MultiStepLR milestones={milestones}, epochs={args.epochs}.")
+    cfg.param_scheduler = schedulers
+
+    cfg.train_cfg.max_epochs = int(args.epochs)
+    cfg.train_cfg.val_interval = int(args.val_interval)
+
+    if "optim_wrapper" not in cfg or "optimizer" not in cfg.optim_wrapper:
+        raise KeyError("Expected cfg.optim_wrapper.optimizer in training config.")
+    cfg.optim_wrapper.optimizer.lr = float(args.lr)
 
 
 def main():
@@ -32,39 +131,33 @@ def main():
 
     if not config_path.is_file():
         raise FileNotFoundError(f"Training config not found: {config_path}")
-    if not checkpoint_path.is_file():
-        raise FileNotFoundError(f"Starting checkpoint not found: {checkpoint_path}")
-    if checkpoint_path.stat().st_size < 10 * 1024 * 1024:
-        raise ValueError(f"Checkpoint is unexpectedly small: {checkpoint_path}")
-    if args.epochs < 1 or args.val_interval < 1 or args.lr <= 0:
-        raise ValueError("epochs, val-interval, and lr must be positive")
+    if not checkpoint_path.is_file() or checkpoint_path.stat().st_size < 10_000_000:
+        raise FileNotFoundError(f"Starting checkpoint missing or too small: {checkpoint_path}")
+    if args.epochs < 5 or args.val_interval < 1 or args.lr <= 0:
+        raise ValueError("For a meaningful run, epochs must be >= 5; val-interval and lr must be positive.")
+    if args.oversample_thr < 0:
+        raise ValueError("--oversample-thr cannot be negative.")
+    if work_dir.exists() and any(work_dir.iterdir()):
+        raise FileExistsError(
+            f"Output directory is not empty: {work_dir}. Choose a NEW work-dir "
+            "to avoid overwriting earlier experiments."
+        )
 
-    # Avoid the Colab inline matplotlib backend inside the training subprocess.
     os.environ.setdefault("MPLBACKEND", "Agg")
-
     from mmengine import Config
     from mmengine.runner import Runner
     from mmdet.utils import register_all_modules
 
     register_all_modules(init_default_scope=True)
     cfg = Config.fromfile(str(config_path))
-
-    # Start a new fine-tuning run from model weights, not the old optimizer state.
     cfg.load_from = str(checkpoint_path)
     cfg.resume = False
     cfg.work_dir = str(work_dir)
 
-    if "train_cfg" not in cfg:
-        raise KeyError("Training config has no train_cfg.")
-    cfg.train_cfg.max_epochs = int(args.epochs)
-    cfg.train_cfg.val_interval = int(args.val_interval)
+    # Print the current dataset statistics before making any training changes.
+    audit_counts(config_path.parent.parent / "data/rdd2022/annotations/instances_train.json")
+    _apply_accuracy_recipe(cfg, args)
 
-    # Lower LR for fine-tuning the already-trained detector.
-    if "optim_wrapper" not in cfg or "optimizer" not in cfg.optim_wrapper:
-        raise KeyError("Expected cfg.optim_wrapper.optimizer in training config.")
-    cfg.optim_wrapper.optimizer.lr = float(args.lr)
-
-    # Select the best checkpoint using validation COCO bbox mAP.
     if "default_hooks" not in cfg:
         cfg.default_hooks = {}
     if "checkpoint" not in cfg.default_hooks:
@@ -74,37 +167,33 @@ def main():
     cfg.default_hooks.checkpoint.save_best = "coco/bbox_mAP"
     cfg.default_hooks.checkpoint.rule = "greater"
     cfg.default_hooks.checkpoint.save_last = True
-
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    print("=" * 72)
-    print("ROADGUARD SWIN — FINE-TUNING RUN")
-    print("=" * 72)
-    print(f"Config:             {config_path}")
-    print(f"Starting checkpoint:{checkpoint_path}")
-    print(f"Output directory:   {work_dir}")
-    print(f"Fine-tune epochs:   {args.epochs}")
-    print(f"Learning rate:      {args.lr:g}")
-    print(f"Validation interval:{args.val_interval}")
-    print("Best checkpoint:    selected by validation coco/bbox_mAP")
-    print("Original checkpoint will not be modified.")
-    print("=" * 72)
+    print("=" * 76)
+    print("ROADGUARD SWIN — ACCURACY FINE-TUNING")
+    print(f"Config:              {config_path}")
+    print(f"Starting checkpoint: {checkpoint_path}")
+    print(f"Output directory:    {work_dir}")
+    print(f"Epochs:              {args.epochs}")
+    print(f"Learning rate:       {args.lr:g}")
+    print("Selection metric:    validation COCO bbox mAP")
+    print("Original checkpoint: unchanged")
+    print("Test split:          not used for checkpoint selection")
+    print("=" * 76)
 
     runner = Runner.from_cfg(cfg)
     runner.train()
 
-    best = work_dir / "best_coco_bbox_mAP_epoch_1.pth"
-    best_candidates = sorted(work_dir.glob("best_coco_bbox_mAP_epoch_*.pth"))
-    if best_candidates:
-        best = max(best_candidates, key=lambda p: p.stat().st_mtime)
-        print(f"Best-checkpoint file detected: {best}")
-        print(f"Size: {best.stat().st_size / 1024**2:.1f} MB")
-    else:
-        print(
-            "WARNING: No best_coco_bbox_mAP_epoch_*.pth found. "
-            "Inspect the training log and checkpoint hook metric name."
+    candidates = sorted(work_dir.glob("best_coco_bbox_mAP_epoch_*.pth"))
+    if not candidates:
+        raise RuntimeError(
+            "Training ended but no best_coco_bbox_mAP checkpoint was written. "
+            "Inspect validation logs for the exact metric key and checkpoint-hook errors."
         )
-    print(f"Training run finished. All artifacts are in: {work_dir}")
+    best = max(candidates, key=lambda p: p.stat().st_mtime)
+    print(f"Best validation-selected checkpoint: {best}")
+    print(f"Checkpoint size: {best.stat().st_size / 1024**2:.1f} MB")
+    print(f"Training run finished. All artifacts: {work_dir}")
 
 
 if __name__ == "__main__":
