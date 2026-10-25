@@ -191,6 +191,13 @@ def main():
         if pos % 100 == 0 or pos == len(image_ids):
             print(f"Inferred {pos}/{len(image_ids)} images", flush=True)
 
+    if missing:
+        examples = ", ".join(missing[:5])
+        raise FileNotFoundError(
+            f"{len(missing)} annotation-listed images were not found under {images_dir}. "
+            f"Fix the image path before trusting the metrics. Examples: {examples}"
+        )
+
     rows = []
     for threshold in sorted(set(args.thresholds)):
         rows.append({
