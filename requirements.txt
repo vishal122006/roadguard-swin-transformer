@@ -1,9 +1,10 @@
-# Target runtime: Python 3.11 (select this in Streamlit Cloud Advanced settings).
-# Streamlit Community Cloud uses CPU-only inference; the model is not loaded until a user clicks Run.
+# Tested deployment target: CPython 3.11 on Linux x86-64.
 streamlit==1.61.1
-numpy>=1.24,<2
-Pillow>=10.0
+numpy==1.26.4
+Pillow==10.4.0
+opencv-python==4.11.0.86
 
+# CPU-only PyTorch compatible with the published MMCV 2.1.0 CPython 3.11 wheel.
 --extra-index-url https://download.pytorch.org/whl/cpu
 --find-links https://download.openmmlab.com/mmcv/dist/cpu/torch2.1/index.html
 torch==2.1.0+cpu
@@ -11,4 +12,4 @@ torchvision==0.16.0+cpu
 mmengine==0.10.7
 mmcv==2.1.0
 mmdet==3.3.0
-pycocotools>=2.0.7
+pycocotools==2.0.10
