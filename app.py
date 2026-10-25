@@ -336,6 +336,44 @@ def render_report(report: dict):
         "a completely untouched test set. Precision/recall/F1 use greedy "
         "one-to-one matching per class at IoU 0.50."
     )
+
+    # Aggregate the three crack classes separately from potholes using the
+    # recorded object-level TP/FP/FN counts; do not call this plain accuracy.
+    crack_class_codes = {
+        "D00_Longitudinal_Crack",
+        "D10_Transverse_Crack",
+        "D20_Alligator_Crack",
+    }
+    crack_rows = [
+        row for row in report.get("per_class_test", [])
+        if row.get("class") in crack_class_codes
+    ]
+    if crack_rows:
+        crack_tp = sum(int(row.get("TP", 0)) for row in crack_rows)
+        crack_fp = sum(int(row.get("FP", 0)) for row in crack_rows)
+        crack_fn = sum(int(row.get("FN", 0)) for row in crack_rows)
+        crack_precision = crack_tp / (crack_tp + crack_fp) if crack_tp + crack_fp else 0.0
+        crack_recall = crack_tp / (crack_tp + crack_fn) if crack_tp + crack_fn else 0.0
+        crack_f1 = (
+            2 * crack_precision * crack_recall / (crack_precision + crack_recall)
+            if crack_precision + crack_recall else 0.0
+        )
+        st.markdown("**Crack-only detection performance**")
+        st.caption(
+            "Aggregates longitudinal, transverse, and alligator cracks (excludes "
+            "potholes). Recorded test split; confidence threshold 0.50; matching IoU 0.50."
+        )
+        crack_metrics = st.columns(4, gap="small")
+        crack_metrics[0].metric("Crack precision", percent(crack_precision))
+        crack_metrics[1].metric("Crack recall", percent(crack_recall))
+        crack_metrics[2].metric("Crack F1", percent(crack_f1))
+        crack_metrics[3].metric("Correctly matched cracks (TP)", f"{crack_tp}")
+        st.caption(
+            f"Counts behind these figures: TP {crack_tp}, FP {crack_fp}, FN {crack_fn}. "
+            "These are object-detection metrics, not plain classification accuracy. "
+            "The test split was inspected earlier during development."
+        )
+
     with st.expander("View per-class test performance and validation threshold sweep"):
         per_class = report.get("per_class_test", [])
         if per_class:
