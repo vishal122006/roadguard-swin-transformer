@@ -69,6 +69,12 @@ The confidence threshold 0.50 was selected by comparing 0.20, 0.30, 0.40, and 0.
 
 See [the full experiment report](docs/experiment-report.md) and the JSON/CSV files in \`results/\` for details. The Streamlit scorecard shows these measured dataset-level results; it does not claim these values as the score for the current uploaded photo.
 
+## Crack-focused experiment (new)
+
+The research objective can also be evaluated as one unified Crack category: D00 longitudinal + D10 transverse + D20 alligator crack. Pothole remains separate. This repo now includes a crack-only evaluation script, a COCO annotation converter, and a separate two-class fine-tuning workflow. The deployed four-class model and its checkpoint are not replaced automatically.
+
+Start with [the crack-focused experiment guide](docs/crack-focused-experiment.md). No improvement is claimed until the evaluation and training scripts are run against the actual dataset and results are measured.
+
 ## Project layout
 
 - \`app.py\`: Streamlit UI and Swin inference.
