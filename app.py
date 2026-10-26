@@ -305,11 +305,13 @@ def render_report(report: dict):
     )
     test = report.get("test_set", {})
     coco = report.get("validation_coco_metrics_epoch_5", {})
-    primary, explanation = st.columns([1, 2], gap="medium")
+    measured_map = coco.get("mAP@0.50:0.95")
+    target_map = 0.70  # Project goal; never presented as a measured result.
+    primary, explanation, goal = st.columns([1.05, 2.2, 0.9], gap="medium")
     with primary:
         primary.metric(
             "Detection accuracy proxy · Validation COCO mAP@0.50:0.95",
-            percent(coco.get("mAP@0.50:0.95")),
+            percent(measured_map),
             help=(
                 "For object detection, COCO mean Average Precision (mAP) is a "
                 "standard overall metric. There is no single universally "
@@ -320,14 +322,29 @@ def render_report(report: dict):
         st.markdown("**Current baseline: Swin-Tiny + FPN + Faster R-CNN, epoch 5**")
         st.write(
             "The latest measured validation COCO mAP@0.50:0.95 is "
-            f"**{percent(coco.get('mAP@0.50:0.95'))}**. This is the existing "
-            "baseline checkpoint; a fine-tuned model has not yet been evaluated "
-            "and no improvement is being claimed."
+            f"**{percent(measured_map)}**. This is the existing baseline checkpoint; "
+            "the fine-tuned model has not yet been evaluated and no improvement is being claimed."
         )
         st.caption(
             "These are dataset-level results—not confidence or accuracy for "
             "the individual photo you upload."
         )
+    with goal:
+        st.metric(
+            "Target mAP goal",
+            "70%",
+            help="Project target only. This is not an achieved or guaranteed result.",
+        )
+        st.caption("Project goal — not yet achieved")
+        try:
+            measured_fraction = float(measured_map)
+            progress = max(0.0, min(measured_fraction / target_map, 1.0))
+            st.progress(
+                progress,
+                text=f"{progress * 100:.1f}% of target value",
+            )
+        except (TypeError, ValueError):
+            st.caption("Progress will appear when a measured validation mAP is recorded.")
 
     metrics = st.columns(4, gap="small")
     cards = [
