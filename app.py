@@ -305,46 +305,35 @@ def render_report(report: dict):
     )
     test = report.get("test_set", {})
     coco = report.get("validation_coco_metrics_epoch_5", {})
-    measured_map = coco.get("mAP@0.50:0.95")
-    target_map = 0.70  # Project goal; never presented as a measured result.
-    primary, explanation, goal = st.columns([1.05, 2.2, 0.9], gap="medium")
+    # Show the requested 70% project target as the headline, not the old
+    # 9% baseline. Explicitly label it as a target so it cannot be mistaken
+    # for a measured result. The previous baseline/progress readout is removed.
+    primary, explanation, status = st.columns([1.05, 2.2, 0.9], gap="medium")
     with primary:
         primary.metric(
-            "Detection accuracy proxy · Validation COCO mAP@0.50:0.95",
-            percent(measured_map),
-            help=(
-                "For object detection, COCO mean Average Precision (mAP) is a "
-                "standard overall metric. There is no single universally "
-                "meaningful plain accuracy percentage for this task."
-            ),
+            "Target mAP goal · COCO mAP@0.50:0.95",
+            "70%",
+            help="Project goal only. This is not a measured or achieved result.",
         )
+        st.caption("Target only — not yet achieved")
     with explanation:
-        st.markdown("**Current baseline: Swin-Tiny + FPN + Faster R-CNN, epoch 5**")
+        st.markdown("**RoadGuard Swin Transformer · Performance target**")
         st.write(
-            "The latest measured validation COCO mAP@0.50:0.95 is "
-            f"**{percent(measured_map)}**. This is the existing baseline checkpoint; "
-            "the fine-tuned model has not yet been evaluated and no improvement is being claimed."
+            "The project is aiming for **70% COCO mAP@0.50:0.95**. "
+            "This is the research target, not a measured score. The fine-tuned "
+            "model must be evaluated before reporting its actual performance."
         )
         st.caption(
-            "These are dataset-level results—not confidence or accuracy for "
-            "the individual photo you upload."
+            "Dataset-level evaluation metric. It is not a confidence score "
+            "or the accuracy of an individual uploaded photograph."
         )
-    with goal:
+    with status:
         st.metric(
-            "Target mAP goal",
-            "70%",
-            help="Project target only. This is not an achieved or guaranteed result.",
+            "Fine-tuned evaluation",
+            "Pending",
+            help="Update this status after the fine-tuned checkpoint has been evaluated.",
         )
-        st.caption("Project goal — not yet achieved")
-        try:
-            measured_fraction = float(measured_map)
-            progress = max(0.0, min(measured_fraction / target_map, 1.0))
-            st.progress(
-                progress,
-                text=f"{progress * 100:.1f}% of target value",
-            )
-        except (TypeError, ValueError):
-            st.caption("Progress will appear when a measured validation mAP is recorded.")
+        st.caption("Awaiting measured results")
 
     metrics = st.columns(4, gap="small")
     cards = [
