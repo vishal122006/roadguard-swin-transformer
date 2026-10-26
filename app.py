@@ -305,10 +305,8 @@ def render_report(report: dict):
     )
     test = report.get("test_set", {})
     coco = report.get("validation_coco_metrics_epoch_5", {})
-    # Show the requested 70% project target as the headline, not the old
-    # 9% baseline. Explicitly label it as a target so it cannot be mistaken
-    # for a measured result. The previous baseline/progress readout is removed.
-    primary, explanation, status = st.columns([1.05, 2.2, 0.9], gap="medium")
+    # Keep only the project target and explanation; no pending/status card.
+    primary, explanation = st.columns([1.05, 2.2], gap="medium")
     with primary:
         primary.metric(
             "Target mAP goal · COCO mAP@0.50:0.95",
@@ -320,20 +318,12 @@ def render_report(report: dict):
         st.markdown("**RoadGuard Swin Transformer · Performance target**")
         st.write(
             "The project is aiming for **70% COCO mAP@0.50:0.95**. "
-            "This is the research target, not a measured score. The fine-tuned "
-            "model must be evaluated before reporting its actual performance."
+            "This is the research target, not a measured score."
         )
         st.caption(
             "Dataset-level evaluation metric. It is not a confidence score "
             "or the accuracy of an individual uploaded photograph."
         )
-    with status:
-        st.metric(
-            "Fine-tuned evaluation",
-            "Pending",
-            help="Update this status after the fine-tuned checkpoint has been evaluated.",
-        )
-        st.caption("Awaiting measured results")
 
     metrics = st.columns(4, gap="small")
     cards = [
